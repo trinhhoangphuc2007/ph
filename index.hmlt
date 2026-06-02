@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chấm Điểm Phát Âm Tiếng Trung (Mandarin)</title>
+    <script src="https://unpkg.com/pinyin-pro"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f3f5;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 600px;
+            box-sizing: border-box;
+        }
+        h2 {
+            text-align: center;
+            color: #c0392b;
+            margin-top: 0;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 8px;
+        }
+        textarea {
+            width: 100%;
+            height: 80px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            resize: none;
+            font-size: 18px;
+            box-sizing: border-box;
+        }
+        .pinyin-preview {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        #btn-record {
+            background-color: #c0392b;
+            color: white;
+        }
+        #btn-record.recording {
+            background-color: #2ecc71;
+            animation: pulse 1.5s infinite;
+        }
+        #btn-speak {
+            background-color: #2980b9;
+            color: white;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .status {
+            text-align: center;
+            font-style: italic;
+            color: #7f8c8d;
+            height: 20px;
+            margin-bottom: 15px;
+        }
+        .result-box {
+            border: 1px solid #e0e0e0;
+            padding: 15px;
+            border-radius: 6px;
+            background-color: #fafafa;
+        }
+        .score {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .comparison {
+            font-size: 22px;
+            line-height: 2;
+            letter-spacing: 2px;
+            text-align: center;
+        }
+        .word-block {
+            display: inline-block;
+            text-align: center;
+            margin: 0 5px;
+        }
+        .word-pinyin {
+            display: block;
+            font-size: 14px;
+            color: #7f8c8d;
+            line-height: 1;
+            margin-bottom: 4px;
+        }
+        .correct { color: #2ecc71; font-weight: bold; }
+        .missing { color: #e67e22; text-decoration: underline; font-weight: bold; }
+        .incorrect-list {
+            margin-top: 15px;
+            font-size: 16px;
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Chấm Điểm Phát Âm Tiếng Trung (zh-CN)</h2>
+    
+    <div class="input-group">
+        <label for="text-input">Nhập câu mẫu chữ Hán tại đây:</label>
+        <textarea id="text-input">你好，很高兴认识你。祝你 hôm nay 学习进步！</textarea>
+        <div id="pinyin-preview" class="pinyin-preview"></div>
+    </div>
+    
+    <div class="controls">
+        <button id="btn-speak">Nghe máy đọc mẫu</button>
+        <button id="btn-record">Bắt đầu nói</button>
+    </div>
+    
+    <div id="status" class="status">Sẵn sàng. Hãy ấn "Bắt đầu nói".</div>
+    
+    <div class="result-box">
+        <div id="score" class="score">Điểm số: --%</div>
+        <hr>
+        <label>Phân tích chi tiết (Xanh: Đúng | Vàng gạch chân: Đọc sai hoặc thiếu):</label>
+        <div id="comparison" class="comparison"></div>
+        <div id="incorrect-words" class="incorrect-list"></div>
+    </div>
+</div>
+
+<script>
+    // Kiểm tra Web Speech API
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechSynthesis = window.speechSynthesis;
+
+    if (!SpeechRecognition) {
+        alert("Trình duyệt của bạn không hỗ trợ nhận diện giọng nói. Vui lòng dùng Google Chrome!");
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'zh-CN'; // Ngôn ngữ: Tiếng Trung Phổ Thông
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    const btnRecord = document.getElementById('btn-record');
+    const btnSpeak = document.getElementById('btn-speak');
+    const textInput = document.getElementById('text-input');
+    const statusText = document.getElementById('status');
+    const scoreDisplay = document.getElementById('score');
+    const comparisonDisplay = document.getElementById('comparison');
+    const incorrectWordsDisplay = document.getElementById('incorrect-words');
+    const pinyinPreview = document.getElementById('pinyin-preview');
+
+    let isRecording = false;
+
+    // Tự động cập nhật Pinyin gợi ý dưới khung nhập liệu
+    function updatePinyinPreview() {
+        const text = textInput.value.trim();
+        if(window.pinyinPro && text) {
+            // Lọc giữ lại chữ Hán để chuyển pinyin
+            pinyinPreview.textContent = "Phiên âm mẫu: " + pinyinPro.pinyin(text, { toneType: 'num' || 'symbol' });
+        } else {
+            pinyinPreview.textContent = "";
+        }
+    }
+    textInput.addEventListener('input', updatePinyinPreview);
+    window.addEventListener('load', updatePinyinPreview);
+
+    // 1. Máy đọc mẫu (Text-to-Speech)
+    btnSpeak.addEventListener('click', () => {
+        if (SpeechSynthesis.speaking) {
+            SpeechSynthesis.cancel();
+            return;
+        }
+        const text = textInput.value.trim();
+        if (text === "") return;
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-CN'; 
+        
+        const voices = SpeechSynthesis.getVoices();
+        const zhVoice = voices.find(voice => voice.lang === 'zh-CN' || voice.lang.includes('zh'));
+        if (zhVoice) utterance.voice = zhVoice;
+
+        SpeechSynthesis.speak(utterance);
+    });
+
+    // 2. Ghi âm giọng nói (Speech-to-Text)
+    btnRecord.addEventListener('click', () => {
+        if (isRecording) {
+            recognition.stop();
+        } else {
+            if (textInput.value.trim() === "") {
+                alert("Vui lòng nhập câu tiếng Trung trước!");
+                return;
+            }
+            recognition.start();
+        }
+    });
+
+    recognition.onstart = () => {
+        isRecording = true;
+        btnRecord.textContent = "正在 nghe... (Đang ghi âm)";
+        btnRecord.classList.add('recording');
+        statusText.textContent = "Hãy đọc to câu mẫu bằng tiếng Trung...";
+    };
+
+    recognition.onend = () => {
+        isRecording = false;
+        btnRecord.textContent = "Bắt đầu nói";
+        btnRecord.classList.remove('recording');
+    };
+
+    recognition.onerror = (event) => {
+        statusText.textContent = "Lỗi hệ thống: " + event.error;
+    };
+
+    recognition.onresult = (event) => {
+        const userSpeech = event.results[0][0].transcript;
+        statusText.textContent = `Hệ thống nghe được: "${userSpeech}"`;
+        compareSpeech(textInput.value, userSpeech);
+    };
+
+    // 3. Thuật toán phân tích ký tự chữ Hán & Chấm điểm
+    function compareSpeech(original, spoken) {
+        // Hàm lọc loại bỏ dấu câu, khoảng trắng, chỉ giữ lại ký tự chữ/số
+        const cleanChars = (str) => str.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?，。？！；：""''（）\s]/g, "").split("");
+
+        const originalChars = cleanChars(original);
+        const spokenChars = cleanChars(spoken);
+
+        let correctCount = 0;
+        let htmlResult = "";
+
+        // Tạo mảng kiểm tra từ người dùng nói
+        let spokenCheck = [...spokenChars];
+
+        originalChars.forEach((char) => {
+            // Lấy pinyin của từng ký tự riêng biệt để hiển thị trên đầu chữ Hán
+            let charPinyin = "";
+            if (window.pinyinPro) {
+                charPinyin = pinyinPro.pinyin(char, { toneType: 'symbol' });
+            }
+
+            const index = spokenCheck.indexOf(char);
+            
+            if (index !== -1) {
+                // Đọc đúng chữ Hán này
+                htmlResult += `
+                    <div class="word-block correct">
+                        <span class="word-pinyin">${charPinyin}</span>
+                        <span class="word-char">${char}</span>
+                    </div>`;
+                correctCount++;
+                spokenCheck.splice(index, 1);
+            } else {
+                // Không đọc hoặc đọc sai chữ Hán này
+                htmlResult += `
+                    <div class="word-block missing" title="Bạn phát âm thiếu hoặc sai từ này">
+                        <span class="word-pinyin">${charPinyin}</span>
+                        <span class="word-char">${char}</span>
+                    </div>`;
+            }
+        });
+
+        // Hiển thị các từ dư thừa / từ bị nhận diện sai lệch
+        if (spokenCheck.length > 0) {
+            incorrectWordsDisplay.innerHTML = `⚠️ <b>Từ lạ/Phát âm sai máy nhận diện được:</b> ${spokenCheck.join(", ")}`;
+        } else {
+            incorrectWordsDisplay.innerHTML = "";
+        }
+
+        // Tính toán điểm số theo số ký tự chính xác
+        const finalScore = originalChars.length > 0 ? Math.round((correctCount / originalChars.length) * 100) : 0;
+
+        // Cập nhật giao diện điểm số
+        scoreDisplay.textContent = `Điểm số: ${finalScore}%`;
+        if (finalScore >= 80) scoreDisplay.style.color = '#2ecc71';
+        else if (finalScore >= 50) scoreDisplay.style.color = '#e67e22';
+        else scoreDisplay.style.color = '#e74c3c';
+
+        comparisonDisplay.innerHTML = htmlResult;
+    }
+
+    // Kích hoạt nạp giọng nói hệ thống
+    if (typeof speechSynthesis !== 'undefined' && speechSynthesis.onvoiceschanged !== undefined) {
+        speechSynthesis.onvoiceschanged = () => SpeechSynthesis.getVoices();
+    }
+</script>
+
+</body>
+</html>
